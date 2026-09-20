@@ -1,0 +1,52 @@
+using System;
+using System.Data;
+using System.Windows.Forms;
+
+namespace BudgetTracker
+{
+    public partial class Form1 : Form
+    {
+        DataTable budgetTable = new DataTable();
+
+        public Form1()
+        {
+            InitializeComponent();
+            SetupBudgetTable();
+        }
+
+        private void SetupBudgetTable()
+        {
+            budgetTable.Columns.Add("Type", typeof(string));
+            budgetTable.Columns.Add("Category", typeof(string));
+            budgetTable.Columns.Add("Description", typeof(string));
+            budgetTable.Columns.Add("Amount", typeof(decimal));
+
+            dgvTransactions.DataSource = budgetTable;
+        }
+
+        private void btnAdd_Click(object sender, EventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(txtDescription.Text) || string.IsNullOrWhiteSpace(txtAmount.Text))
+            {
+                MessageBox.Show("Please enter a description and amount.");
+                return;
+            }
+
+            if (decimal.TryParse(txtAmount.Text, out decimal amount))
+            {
+                string type = cmbType.SelectedItem?.ToString() ?? "Income";
+                string category = cmbCategory.SelectedItem?.ToString() ?? "General";
+                string description = txtDescription.Text;
+
+                budgetTable.Rows.Add(type, category, description, amount);
+
+                txtDescription.Clear();
+                txtAmount.Clear();
+            }
+            else
+            {
+                MessageBox.Show("Please enter a valid number for the amount.");
+            }
+        }
+    }
+}
