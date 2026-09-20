@@ -1,1 +1,2 @@
 # BudgetTracker
+By making use of the personal budget tracker, users will be able to manage their budget by recording income and expenses, categorise transactions along with showing simple totals. I would create this application by using C# Windows forms application which can help to track budget all in one place. It will help in providing users a guide to their expenses and help them to categorise expenses leading to understanding spending to budget. 
