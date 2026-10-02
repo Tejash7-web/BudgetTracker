@@ -1,52 +1,287 @@
 using System;
 using System.Data;
+using System.Drawing;
 using System.Windows.Forms;
+using MySql.Data.MySqlClient;
 
-namespace BudgetTracker
+namespace PersonalBudgetTracker
 {
-    public partial class Form1 : Form
+    public partial class MainForm : Form
     {
-        DataTable budgetTable = new DataTable();
+        // Connection string configured for XAMPP MySQL defaults
+        private string connectionString = "Server=localhost;Database=PersonalBudgetDB;Uid=root;Pw=;";
 
-        public Form1()
+        // UI Controls declarations
+        private TextBox txtAmount;
+        private TextBox txtDescription;
+        private ComboBox cmbCategory;
+        private ComboBox cmbType;
+        private DateTimePicker dtpDate;
+        private Button btnAdd;
+        private Button btnDelete;
+        private DataGridView dgvTransactions;
+        private Label lblTotalIncome;
+        private Label lblTotalExpenses;
+        private Label lblRemainingBalance;
+        private Label lblAmount;
+        private Label lblCategory;
+        private Label lblType;
+        private Label lblDate;
+        private Label lblDescription;
+
+        public MainForm()
         {
-            InitializeComponent();
-            SetupBudgetTable();
+            InitializeComponentManual();
+            
+            // Load initial data and update dashboard
+            LoadCategories();
+            LoadTypes();
+            LoadTransactions();
+            UpdateSummary();
         }
 
-        private void SetupBudgetTable()
+        // Programmatically sets up controls on the form to avoid designer missing control errors
+        private void InitializeComponentManual()
         {
-            budgetTable.Columns.Add("Type", typeof(string));
-            budgetTable.Columns.Add("Category", typeof(string));
-            budgetTable.Columns.Add("Description", typeof(string));
-            budgetTable.Columns.Add("Amount", typeof(decimal));
+            this.Text = "Personal Budget Tracker";
+            this.Size = new Size(800, 600);
+            this.StartPosition = FormStartPosition.CenterScreen;
 
-            dgvTransactions.DataSource = budgetTable;
-        }
+            // Labels
+            lblAmount = new Label() { Text = "Amount:", Location = new Point(20, 20), AutoSize = true };
+            lblCategory = new Label() { Text = "Category:", Location = new Point(20, 60), AutoSize = true };
+            lblType = new Label() { Text = "Type:", Location = new Point(20, 100), AutoSize = true };
+            lblDate = new Label() { Text = "Date:", Location = new Point(20, 140), AutoSize = true };
+            lblDescription = new Label() { Text = "Description:", Location = new Point(20, 180), AutoSize = true };
 
-        private void btnAdd_Click(object sender, EventArgs e)
-        {
-            if (string.IsNullOrWhiteSpace(txtDescription.Text) || string.IsNullOrWhiteSpace(txtAmount.Text))
+            // Input fields
+            txtAmount = new TextBox() { Location = new Point(120, 20), Width = 180 };
+            cmbCategory = new ComboBox() { Location = new Point(120, 60), Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbType = new ComboBox() { Location = new Point(120, 100), Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
+            dtpDate = new DateTimePicker() { Location = new Point(120, 140), Width = 180 };
+            txtDescription = new TextBox() { Location = new Point(120, 180), Width = 180, Multiline = true, Height = 50 };
+
+            // Buttons
+            btnAdd = new Button() { Text = "Add Transaction", Location = new Point(20, 250), Width = 130, Height = 30 };
+            btnDelete = new Button() { Text = "Delete Selected", Location = new Point(170, 250), Width = 130, Height = 30 };
+
+            btnAdd.Click += new EventHandler(BtnAddClick);
+            btnDelete.Click += new EventHandler(BtnDeleteClick);
+
+            // DataGridView for transaction history
+            dgvTransactions = new DataGridView()
             {
-                MessageBox.Show("Please enter a description and amount.");
+                Location = new Point(320, 20),
+                Size = new Size(440, 430),
+                ReadOnly = true,
+                SelectionMode = DataGridViewSelectionMode.FullRowSelect,
+                MultiSelect = false,
+                AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
+            };
+
+            // Summary Labels
+            lblTotalIncome = new Label() { Text = "Total Income: $0.00", Location = new Point(20, 310), AutoSize = true, Font = new Font(this.Font, FontStyle.Bold) };
+            lblTotalExpenses = new Label() { Text = "Total Expenses: $0.00", Location = new Point(20, 340), AutoSize = true, Font = new Font(this.Font, FontStyle.Bold) };
+            lblRemainingBalance = new Label() { Text = "Remaining Balance: $0.00", Location = new Point(20, 370), AutoSize = true, Font = new Font(this.Font, FontStyle.Bold) };
+
+            // Add all controls to form
+            this.Controls.Add(lblAmount);
+            this.Controls.Add(txtAmount);
+            this.Controls.Add(lblCategory);
+            this.Controls.Add(cmbCategory);
+            this.Controls.Add(lblType);
+            this.Controls.Add(cmbType);
+            this.Controls.Add(lblDate);
+            this.Controls.Add(dtpDate);
+            this.Controls.Add(lblDescription);
+            this.Controls.Add(txtDescription);
+            this.Controls.Add(btnAdd);
+            this.Controls.Add(btnDelete);
+            this.Controls.Add(dgvTransactions);
+            this.Controls.Add(lblTotalIncome);
+            this.Controls.Add(lblTotalExpenses);
+            this.Controls.Add(lblRemainingBalance);
+        }
+
+        private void ExecuteNonQuery(string query, MySqlParameter[] parameters)
+        {
+            using (MySqlConnection conn = new MySqlConnection(connectionString))
+            {
+                conn.Open();
+                using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                {
+                    if (parameters != null)
+                    {
+                        cmd.Parameters.AddRange(parameters);
+                    }
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        private void LoadCategories()
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    MySqlDataAdapter adapter = new MySqlDataAdapter("SELECT CategoryID, Name FROM Category", conn);
+                    DataTable dt = new DataTable();
+                    adapter.Fill(dt);
+
+                    cmbCategory.DataSource = dt;
+                    cmbCategory.DisplayMember = "Name";
+                    cmbCategory.ValueMember = "CategoryID";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error loading categories: " + ex.Message);
+            }
+        }
+
+        private void LoadTypes()
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    MySqlDataAdapter adapter = new MySqlDataAdapter("SELECT TypeID, Name FROM Type", conn);
+                    DataTable dt = new DataTable();
+                    adapter.Fill(dt);
+
+                    cmbType.DataSource = dt;
+                    cmbType.DisplayMember = "Name";
+                    cmbType.ValueMember = "TypeID";
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error loading transaction types: " + ex.Message);
+            }
+        }
+
+        private void LoadTransactions()
+        {
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+                    string query = @"SELECT t.TransactionID, t.Amount, c.Name AS Category, 
+                                            tp.Name AS Type, t.Date, t.Description 
+                                     FROM Transaction t
+                                     LEFT JOIN Category c ON t.CategoryID = c.CategoryID
+                                     LEFT JOIN Type tp ON t.TypeID = tp.TypeID
+                                     ORDER BY t.Date DESC";
+
+                    MySqlDataAdapter adapter = new MySqlDataAdapter(query, conn);
+                    DataTable dt = new DataTable();
+                    adapter.Fill(dt);
+
+                    dgvTransactions.DataSource = dt;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error loading transactions: " + ex.Message);
+            }
+        }
+
+        private void UpdateSummary()
+        {
+            decimal totalIncome = 0;
+            decimal totalExpenses = 0;
+
+            try
+            {
+                using (MySqlConnection conn = new MySqlConnection(connectionString))
+                {
+                    conn.Open();
+
+                    string incomeQuery = "SELECT IFNULL(SUM(Amount), 0) FROM Transaction WHERE TypeID = 1";
+                    using (MySqlCommand cmd = new MySqlCommand(incomeQuery, conn))
+                    {
+                        totalIncome = Convert.ToDecimal(cmd.ExecuteScalar());
+                    }
+
+                    string expenseQuery = "SELECT IFNULL(SUM(Amount), 0) FROM Transaction WHERE TypeID = 2";
+                    using (MySqlCommand cmd = new MySqlCommand(expenseQuery, conn))
+                    {
+                        totalExpenses = Convert.ToDecimal(cmd.ExecuteScalar());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error calculating totals: " + ex.Message);
+            }
+
+            decimal remainingBalance = totalIncome - totalExpenses;
+
+            // Formatted string output without string interpolation
+            lblTotalIncome.Text = "Total Income: $" + totalIncome.ToString("F2");
+            lblTotalExpenses.Text = "Total Expenses: $" + totalExpenses.ToString("F2");
+            lblRemainingBalance.Text = "Remaining Balance: $" + remainingBalance.ToString("F2");
+        }
+
+        private void BtnAddClick(object sender, EventArgs e)
+        {
+            decimal amount;
+            if (!decimal.TryParse(txtAmount.Text, out amount))
+            {
+                MessageBox.Show("Please enter a valid numeric amount.", "Input Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (decimal.TryParse(txtAmount.Text, out decimal amount))
-            {
-                string type = cmbType.SelectedItem?.ToString() ?? "Income";
-                string category = cmbCategory.SelectedItem?.ToString() ?? "General";
-                string description = txtDescription.Text;
+            string query = "INSERT INTO Transaction (Amount, CategoryID, Date, Description, TypeID) " +
+                           "VALUES (@Amount, @CategoryID, @Date, @Description, @TypeID)";
 
-                budgetTable.Rows.Add(type, category, description, amount);
+            MySqlParameter[] parameters = {
+                new MySqlParameter("@Amount", amount),
+                new MySqlParameter("@CategoryID", cmbCategory.SelectedValue),
+                new MySqlParameter("@Date", dtpDate.Value.ToString("yyyy-MM-dd")),
+                new MySqlParameter("@Description", txtDescription.Text),
+                new MySqlParameter("@TypeID", cmbType.SelectedValue)
+            };
 
-                txtDescription.Clear();
-                txtAmount.Clear();
-            }
-            else
+            ExecuteNonQuery(query, parameters);
+            MessageBox.Show("Transaction added successfully!");
+
+            ClearInputs();
+            LoadTransactions();
+            UpdateSummary();
+        }
+
+        private void BtnDeleteClick(object sender, EventArgs e)
+        {
+            if (dgvTransactions.SelectedRows.Count == 0)
             {
-                MessageBox.Show("Please enter a valid number for the amount.");
+                MessageBox.Show("Please select a transaction row from the table to delete.", "Selection Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
             }
+
+            int transactionID = Convert.ToInt32(dgvTransactions.SelectedRows[0].Cells["TransactionID"].Value);
+
+            string query = "DELETE FROM Transaction WHERE TransactionID = @TransactionID";
+            MySqlParameter[] parameters = {
+                new MySqlParameter("@TransactionID", transactionID)
+            };
+
+            ExecuteNonQuery(query, parameters);
+            MessageBox.Show("Transaction deleted successfully!");
+
+            LoadTransactions();
+            UpdateSummary();
+        }
+
+        private void ClearInputs()
+        {
+            txtAmount.Clear();
+            txtDescription.Clear();
+            dtpDate.Value = DateTime.Now;
         }
     }
 }
