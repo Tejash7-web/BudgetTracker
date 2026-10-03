@@ -17,14 +17,6 @@ The application allows users to:
 
 The application uses Object-Oriented Programming (OOP) concepts including classes and objects, encapsulation, inheritance, polymorphism and abstraction. Exception handling is also used to manage runtime and database errors.
 
-## Software and Technologies Used
-
-* C#
-* .NET Windows Forms
-* Visual Studio / Visual Studio Code
-* MySQL Server
-* MySQL Workbench
-* MySQL Connector/NET
 
 ## How to Run the Application
 
@@ -97,10 +89,10 @@ The Personal Budget Tracker window should open.
 
 ### Development Tools
 
-* Microsoft Visual Studio – used for C# application development and execution
-* Visual Studio Code – used for code editing, where applicable
+* SharpDevelop – used for C# application development and code editing
+* Visual Studio Code – used for code editing
 * MySQL Server – used for database storage
-* MySQL Workbench – used for database creation and management
+* MySQL Workbench – used for database management
 * MySQL Connector/NET – used to connect the C# application with MySQL
 
 ### GenAI Tools
