@@ -1,0 +1,16 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+/*
+ * Refactored into multiple files:
+ * - Program.cs
+ * - MainForm.cs
+ * - DatabaseManager.cs
+ * - TransactionModel.cs
+ * - BudgetTracker.csproj
+ *
+ * This legacy file is kept as a note so the repository history remains intact.
+ */
