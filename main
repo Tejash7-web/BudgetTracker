@@ -4,14 +4,72 @@ using System.Drawing;
 using System.Windows.Forms;
 using MySql.Data.MySqlClient;
 
-namespace BudgetTracker
+namespace PersonalBudgetTracker
 {
+
+    public abstract class DatabaseManager
+    {
+        protected string ConnectionString { get; set; }
+
+        public DatabaseManager(string connectionString)
+        {
+            ConnectionString = connectionString;
+        }
+
+        public abstract DataTable LoadData(string query);
+
+        public abstract void ExecuteNonQuery(string query, MySqlParameter[] parameters);
+    }
+
+    public class MySqlDatabaseManager : DatabaseManager
+    {
+        public MySqlDatabaseManager(string connectionString) : base(connectionString) { }
+
+        public override DataTable LoadData(string query)
+        {
+            DataTable dt = new DataTable();
+            using (MySqlConnection conn = new MySqlConnection(ConnectionString))
+            {
+                conn.Open();
+                using (MySqlDataAdapter adapter = new MySqlDataAdapter(query, conn))
+                {
+                    adapter.Fill(dt);
+                }
+            }
+            return dt;
+        }
+
+        public override void ExecuteNonQuery(string query, MySqlParameter[] parameters)
+        {
+            using (MySqlConnection conn = new MySqlConnection(ConnectionString))
+            {
+                conn.Open();
+                using (MySqlCommand cmd = new MySqlCommand(query, conn))
+                {
+                    if (parameters != null)
+                    {
+                        cmd.Parameters.AddRange(parameters);
+                    }
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+    }
+
+    public class TransactionModel
+    {
+        public decimal Amount { get; set; }
+        public int CategoryId { get; set; }
+        public int TypeId { get; set; }
+        public DateTime Date { get; set; }
+        public string Description { get; set; }
+    }
+
     public partial class MainForm : Form
     {
-        // Connection string configured for XAMPP MySQL defaults
-        private string connectionString = "Server=localhost;Database=BudgetTrackerDB;Uid=root;Pw=;";
+        private readonly DatabaseManager dbManager;
 
-        // UI Controls declarations
+        // UI Controls
         private TextBox txtAmount;
         private TextBox txtDescription;
         private ComboBox cmbCategory;
@@ -32,18 +90,19 @@ namespace BudgetTracker
         public MainForm()
         {
             InitializeComponentManual();
-            
-            // Load initial data and update dashboard
+
+            string connStr = "Server=localhost;Database=PersonalBudgetDB;Uid=root;Pw=;";
+            dbManager = new MySqlDatabaseManager(connStr);
+
             LoadCategories();
             LoadTypes();
             LoadTransactions();
             UpdateSummary();
         }
 
-        // Programmatically sets up controls on the form to avoid designer missing control errors
         private void InitializeComponentManual()
         {
-            this.Text = "Budget Tracker";
+            this.Text = "Personal Budget Tracker";
             this.Size = new Size(800, 600);
             this.StartPosition = FormStartPosition.CenterScreen;
 
@@ -78,8 +137,7 @@ namespace BudgetTracker
                 MultiSelect = false,
                 AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill
             };
-
-            // Summary Labels
+            
             lblTotalIncome = new Label() { Text = "Total Income: $0.00", Location = new Point(20, 310), AutoSize = true, Font = new Font(this.Font, FontStyle.Bold) };
             lblTotalExpenses = new Label() { Text = "Total Expenses: $0.00", Location = new Point(20, 340), AutoSize = true, Font = new Font(this.Font, FontStyle.Bold) };
             lblRemainingBalance = new Label() { Text = "Remaining Balance: $0.00", Location = new Point(20, 370), AutoSize = true, Font = new Font(this.Font, FontStyle.Bold) };
@@ -103,51 +161,14 @@ namespace BudgetTracker
             this.Controls.Add(lblRemainingBalance);
         }
 
-        private void ExecuteNonQuery(string query, MySqlParameter[] parameters)
-        {
-            try
-            {
-                using (MySqlConnection conn = new MySqlConnection(connectionString))
-                {
-                    conn.Open();
-                    using (MySqlCommand cmd = new MySqlCommand(query, conn))
-                    {
-                        if (parameters != null)
-                        {
-                            cmd.Parameters.AddRange(parameters);
-                        }
-                        cmd.ExecuteNonQuery();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Database Error: " + ex.Message);
-            }
-        }
-
         private void LoadCategories()
         {
             try
             {
-                using (MySqlConnection conn = new MySqlConnection(connectionString))
-                {
-                    conn.Open();
-                    MySqlDataAdapter adapter = new MySqlDataAdapter("SELECT CategoryID, Name FROM `Category`", conn);
-                    DataTable dt = new DataTable();
-                    adapter.Fill(dt);
-
-                    if (dt.Rows.Count > 0)
-                    {
-                        cmbCategory.DataSource = dt;
-                        cmbCategory.DisplayMember = "Name";
-                        cmbCategory.ValueMember = "CategoryID";
-                    }
-                    else
-                    {
-                        MessageBox.Show("No categories found. Please add categories to the database.");
-                    }
-                }
+                DataTable dt = dbManager.LoadData("SELECT CategoryID, Name FROM Category");
+                cmbCategory.DataSource = dt;
+                cmbCategory.DisplayMember = "Name";
+                cmbCategory.ValueMember = "CategoryID";
             }
             catch (Exception ex)
             {
@@ -159,24 +180,10 @@ namespace BudgetTracker
         {
             try
             {
-                using (MySqlConnection conn = new MySqlConnection(connectionString))
-                {
-                    conn.Open();
-                    MySqlDataAdapter adapter = new MySqlDataAdapter("SELECT TypeID, Name FROM `Type`", conn);
-                    DataTable dt = new DataTable();
-                    adapter.Fill(dt);
-
-                    if (dt.Rows.Count > 0)
-                    {
-                        cmbType.DataSource = dt;
-                        cmbType.DisplayMember = "Name";
-                        cmbType.ValueMember = "TypeID";
-                    }
-                    else
-                    {
-                        MessageBox.Show("No transaction types found. Please add types to the database.");
-                    }
-                }
+                DataTable dt = dbManager.LoadData("SELECT TypeID, Name FROM Type");
+                cmbType.DataSource = dt;
+                cmbType.DisplayMember = "Name";
+                cmbType.ValueMember = "TypeID";
             }
             catch (Exception ex)
             {
@@ -188,22 +195,14 @@ namespace BudgetTracker
         {
             try
             {
-                using (MySqlConnection conn = new MySqlConnection(connectionString))
-                {
-                    conn.Open();
-                    string query = @"SELECT t.TransactionID, t.Amount, c.Name AS Category, 
-                                            tp.Name AS Type, t.Date, t.Description 
-                                     FROM `Transaction` t
-                                     LEFT JOIN `Category` c ON t.CategoryID = c.CategoryID
-                                     LEFT JOIN `Type` tp ON t.TypeID = tp.TypeID
-                                     ORDER BY t.Date DESC";
+                string query = @"SELECT t.TransactionID, t.Amount, c.Name AS Category, 
+                                        tp.Name AS Type, t.Date, t.Description 
+                                 FROM Transaction t
+                                 LEFT JOIN Category c ON t.CategoryID = c.CategoryID
+                                 LEFT JOIN Type tp ON t.TypeID = tp.TypeID
+                                 ORDER BY t.Date DESC";
 
-                    MySqlDataAdapter adapter = new MySqlDataAdapter(query, conn);
-                    DataTable dt = new DataTable();
-                    adapter.Fill(dt);
-
-                    dgvTransactions.DataSource = dt;
-                }
+                dgvTransactions.DataSource = dbManager.LoadData(query);
             }
             catch (Exception ex)
             {
@@ -218,25 +217,13 @@ namespace BudgetTracker
 
             try
             {
-                using (MySqlConnection conn = new MySqlConnection(connectionString))
-                {
-                    conn.Open();
+                DataTable incomeDt = dbManager.LoadData("SELECT IFNULL(SUM(Amount), 0) FROM Transaction WHERE TypeID = 1");
+                if (incomeDt.Rows.Count > 0 && incomeDt.Rows[0][0] != DBNull.Value)
+                    totalIncome = Convert.ToDecimal(incomeDt.Rows[0][0]);
 
-                    // Query by type name for better safety
-                    string incomeQuery = "SELECT IFNULL(SUM(Amount), 0) FROM `Transaction` WHERE TypeID IN (SELECT TypeID FROM `Type` WHERE Name = 'Income')";
-                    using (MySqlCommand cmd = new MySqlCommand(incomeQuery, conn))
-                    {
-                        object result = cmd.ExecuteScalar();
-                        totalIncome = result != null ? Convert.ToDecimal(result) : 0;
-                    }
-
-                    string expenseQuery = "SELECT IFNULL(SUM(Amount), 0) FROM `Transaction` WHERE TypeID IN (SELECT TypeID FROM `Type` WHERE Name = 'Expense')";
-                    using (MySqlCommand cmd = new MySqlCommand(expenseQuery, conn))
-                    {
-                        object result = cmd.ExecuteScalar();
-                        totalExpenses = result != null ? Convert.ToDecimal(result) : 0;
-                    }
-                }
+                DataTable expenseDt = dbManager.LoadData("SELECT IFNULL(SUM(Amount), 0) FROM Transaction WHERE TypeID = 2");
+                if (expenseDt.Rows.Count > 0 && expenseDt.Rows[0][0] != DBNull.Value)
+                    totalExpenses = Convert.ToDecimal(expenseDt.Rows[0][0]);
             }
             catch (Exception ex)
             {
@@ -245,7 +232,6 @@ namespace BudgetTracker
 
             decimal remainingBalance = totalIncome - totalExpenses;
 
-            // Formatted string output
             lblTotalIncome.Text = "Total Income: $" + totalIncome.ToString("F2");
             lblTotalExpenses.Text = "Total Expenses: $" + totalExpenses.ToString("F2");
             lblRemainingBalance.Text = "Remaining Balance: $" + remainingBalance.ToString("F2");
@@ -253,31 +239,6 @@ namespace BudgetTracker
 
         private void BtnAddClick(object sender, EventArgs e)
         {
-            // Validate inputs
-            if (string.IsNullOrWhiteSpace(txtAmount.Text))
-            {
-                MessageBox.Show("Please enter an amount.", "Input Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtDescription.Text))
-            {
-                MessageBox.Show("Please enter a description.", "Input Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (cmbCategory.SelectedValue == null)
-            {
-                MessageBox.Show("Please select a category.", "Selection Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
-            if (cmbType.SelectedValue == null)
-            {
-                MessageBox.Show("Please select a transaction type.", "Selection Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
-
             decimal amount;
             if (!decimal.TryParse(txtAmount.Text, out amount))
             {
@@ -285,18 +246,27 @@ namespace BudgetTracker
                 return;
             }
 
-            string query = "INSERT INTO `Transaction` (Amount, CategoryID, Date, Description, TypeID) " +
+            TransactionModel transaction = new TransactionModel
+            {
+                Amount = amount,
+                CategoryId = Convert.ToInt32(cmbCategory.SelectedValue),
+                TypeId = Convert.ToInt32(cmbType.SelectedValue),
+                Date = dtpDate.Value,
+                Description = txtDescription.Text
+            };
+
+            string query = "INSERT INTO Transaction (Amount, CategoryID, Date, Description, TypeID) " +
                            "VALUES (@Amount, @CategoryID, @Date, @Description, @TypeID)";
 
             MySqlParameter[] parameters = {
-                new MySqlParameter("@Amount", amount),
-                new MySqlParameter("@CategoryID", cmbCategory.SelectedValue),
-                new MySqlParameter("@Date", dtpDate.Value.Date),
-                new MySqlParameter("@Description", txtDescription.Text),
-                new MySqlParameter("@TypeID", cmbType.SelectedValue)
+                new MySqlParameter("@Amount", transaction.Amount),
+                new MySqlParameter("@CategoryID", transaction.CategoryId),
+                new MySqlParameter("@Date", transaction.Date.ToString("yyyy-MM-dd")),
+                new MySqlParameter("@Description", transaction.Description),
+                new MySqlParameter("@TypeID", transaction.TypeId)
             };
 
-            ExecuteNonQuery(query, parameters);
+            dbManager.ExecuteNonQuery(query, parameters);
             MessageBox.Show("Transaction added successfully!");
 
             ClearInputs();
@@ -312,25 +282,18 @@ namespace BudgetTracker
                 return;
             }
 
-            try
-            {
-                int transactionID = Convert.ToInt32(dgvTransactions.SelectedRows[0].Cells["TransactionID"].Value);
+            int transactionID = Convert.ToInt32(dgvTransactions.SelectedRows[0].Cells["TransactionID"].Value);
 
-                string query = "DELETE FROM `Transaction` WHERE TransactionID = @TransactionID";
-                MySqlParameter[] parameters = {
-                    new MySqlParameter("@TransactionID", transactionID)
-                };
+            string query = "DELETE FROM Transaction WHERE TransactionID = @TransactionID";
+            MySqlParameter[] parameters = {
+                new MySqlParameter("@TransactionID", transactionID)
+            };
 
-                ExecuteNonQuery(query, parameters);
-                MessageBox.Show("Transaction deleted successfully!");
+            dbManager.ExecuteNonQuery(query, parameters);
+            MessageBox.Show("Transaction deleted successfully!");
 
-                LoadTransactions();
-                UpdateSummary();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error deleting transaction: " + ex.Message);
-            }
+            LoadTransactions();
+            UpdateSummary();
         }
 
         private void ClearInputs()
